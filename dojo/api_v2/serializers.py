@@ -2139,7 +2139,7 @@ class ImportScanSerializer(serializers.Serializer):
         """
         context = dict(data)
         # update some vars
-        context["scan"] = data.get("file", None)
+        context["scan"] = data.pop("file", None)
         context["environment"] = Development_Environment.objects.get(
             name=data.get("environment", "Development")
         )
@@ -2199,12 +2199,15 @@ class ImportScanSerializer(serializers.Serializer):
             # Raise an explicit drf exception here
             raise ValidationError(str(e))
 
-    def get_importer(self) -> BaseImporter:
+    def get_importer(
+        self,
+        **kwargs: dict,
+    ) -> BaseImporter:
         """
         Returns a new instance of an importer that extends
         the BaseImporter class
         """
-        return DefaultImporter()
+        return DefaultImporter(**kwargs)
 
     def process_scan(
         self,
@@ -2218,8 +2221,9 @@ class ImportScanSerializer(serializers.Serializer):
         Raises exceptions in the event of an error
         """
         try:
-            context["test"], _, _, _, _, _, _ = self.get_importer().process_scan(
-                **context,
+            importer = self.get_importer(**context)
+            context["test"], _, _, _, _, _, _ = importer.process_scan(
+                context.pop("scan", None)
             )
             # Update the response body with some new data
             if test := context.get("test"):
@@ -2470,19 +2474,25 @@ class ReImportScanSerializer(TaggitSerializer, serializers.Serializer):
             # Raise an explicit drf exception here
             raise ValidationError(str(e))
 
-    def get_importer(self) -> BaseImporter:
+    def get_importer(
+        self,
+        **kwargs: dict,
+    ) -> BaseImporter:
         """
         Returns a new instance of an importer that extends
         the BaseImporter class
         """
-        return DefaultImporter()
+        return DefaultImporter(**kwargs)
 
-    def get_reimporter(self) -> BaseImporter:
+    def get_reimporter(
+        self,
+        **kwargs: dict,
+    ) -> BaseImporter:
         """
         Returns a new instance of a reimporter that extends
         the BaseImporter class
         """
-        return DefaultReImporter()
+        return DefaultReImporter(**kwargs)
 
     def process_scan(
         self,
@@ -2500,14 +2510,22 @@ class ReImportScanSerializer(TaggitSerializer, serializers.Serializer):
         try:
             if test := context.get("test"):
                 statistics_before = test.statistics
-                context["test"], _, _, _, _, _, test_import = self.get_reimporter().process_scan(**context)
+                context["test"], _, _, _, _, _, test_import = self.get_reimporter(
+                    **context
+                ).process_scan(
+                    context.pop("scan", None)
+                )
                 if test_import:
                     statistics_delta = test_import.statistics
             elif context.get("auto_create_context"):
                 # Attempt to create an engagement
                 logger.debug("reimport for non-existing test, using import to create new test")
                 context["engagement"] = auto_create_manager.get_or_create_engagement(**context)
-                context["test"], _, _, _, _, _, _ = self.get_importer().process_scan(**context)
+                context["test"], _, _, _, _, _, _ = self.get_importer(
+                    **context
+                ).process_scan(
+                    context.pop("scan", None)
+                )
             else:
                 msg = "A test could not be found!"
                 raise NotFound(msg)
