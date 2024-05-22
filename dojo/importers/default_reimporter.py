@@ -1,11 +1,9 @@
 import logging
-from datetime import datetime
 from typing import List, Tuple
 
 from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.serializers import deserialize, serialize
 from django.db.models.query_utils import Q
-from django.utils import timezone
 
 import dojo.finding.helper as finding_helper
 import dojo.jira_link.helper as jira_helper
@@ -13,8 +11,7 @@ import dojo.notifications.helper as notifications_helper
 from dojo.importers.base_importer import BaseImporter, Parser
 from dojo.importers.options import ImporterOptions
 from dojo.models import (
-    Dojo_User,
-    Engagement,
+    Development_Environment,
     Finding,
     Notes,
     Test,
@@ -40,6 +37,19 @@ class DefaultReImporterOptions(ImporterOptions):
             **kwargs,
         )
 
+    def validate_environment(
+        self,
+        *args: list,
+        **kwargs: dict,
+    ):
+        return self.validate(
+            "environment",
+            expected_types=[Development_Environment],
+            required=False,
+            default=None,
+            **kwargs,
+        )
+
 
 class DefaultReImporter(BaseImporter, DefaultReImporterOptions):
     """
@@ -53,7 +63,7 @@ class DefaultReImporter(BaseImporter, DefaultReImporterOptions):
         super().__init__(
             self,
             *args,
-            importer_type=Test_Import.REIMPORT_TYPE,
+            import_type=Test_Import.REIMPORT_TYPE,
             **kwargs,
         )
 
@@ -177,7 +187,7 @@ class DefaultReImporter(BaseImporter, DefaultReImporterOptions):
             if not hasattr(unsaved_finding, "test"):
                 unsaved_finding.test = self.test
             # Set the service supplied at import time
-            if not self.service.isspace():
+            if self.service is not None:
                 unsaved_finding.service = self.service
             # Clean any endpoints that are on the finding
             self.endpoint_manager.clean_unsaved_endpoints(unsaved_finding.unsaved_endpoints)
@@ -232,18 +242,6 @@ class DefaultReImporter(BaseImporter, DefaultReImporterOptions):
         # this means untouched can have this finding inside it,
         # while it is in fact a new finding. So we subtract new_items
         self.untouched = set(self.unchanged_items) - set(self.to_mitigate) - set(self.new_items) - set(self.reactivated_items)
-
-        print("\n\n")
-        print(f"\t original_items: {[f'{finding.id}: {finding.title}' for finding in self.original_items]}")
-        print(f"\t new_items: {[f'{finding.id}: {finding.title}' for finding in self.new_items]}")
-        print(f"\t reactivated_items: {[f'{finding.id}: {finding.title}' for finding in self.reactivated_items]}")
-        print(f"\t unchanged_items: {[f'{finding.id}: {finding.title}' for finding in self.unchanged_items]}")
-        print("")
-        print(f"\t new_items: {[f'{finding.id}: {finding.title}' for finding in self.new_items]}")
-        print(f"\t reactivated_items: {[f'{finding.id}: {finding.title}' for finding in self.reactivated_items]}")
-        print(f"\t to_mitigate: {[f'{finding.id}: {finding.title}' for finding in self.to_mitigate]}")
-        print(f"\t untouched: {[f'{finding.id}: {finding.title}' for finding in self.untouched]}")
-        print("\n\n")
 
         # Process groups
         self.process_groups_for_all_findings(**kwargs)
@@ -649,7 +647,6 @@ class DefaultReImporter(BaseImporter, DefaultReImporterOptions):
         # Manage the finding grouping selection
         self.process_finding_groups(
             unsaved_finding,
-            self.group_by,
             self.group_names_to_findings_dict,
         )
         # Add the new finding to the list
