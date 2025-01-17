@@ -130,11 +130,11 @@ def async_dupe_delete(*args, **kwargs):
         results = Finding.objects \
                 .filter(duplicate=True) \
                 .order_by() \
-                .values("duplicate_finding") \
+                .values("duplicate_finding", "id") \
                 .annotate(num_dupes=Count("id")) \
                 .filter(num_dupes__gt=dupe_max)[:total_duplicate_delete_count_max_per_run]
 
-        originals_with_too_many_duplicates_ids = [result["duplicate_finding"] for result in results]
+        originals_with_too_many_duplicates_ids = [result["duplicate_finding"] or result["id"] for result in results]
 
         originals_with_too_many_duplicates = Finding.objects.filter(id__in=originals_with_too_many_duplicates_ids).order_by("id")
 
@@ -145,6 +145,10 @@ def async_dupe_delete(*args, **kwargs):
         total_deleted_count = 0
         for original in originals_with_too_many_duplicates:
             duplicate_list = original.original_finding.all()
+            # Edge case for processing findings that were set as duplicate via the API, and do not have an original finding
+            # In this case, deleting the finding itself seems like the right thing to do
+            if not original.original_finding.exists():
+                duplicate_list = [original]
             dupe_count = len(duplicate_list) - dupe_max
 
             for finding in duplicate_list:
